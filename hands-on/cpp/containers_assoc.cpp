@@ -30,14 +30,21 @@ Duration fill(Container& cont, int N)
   auto start = Clock::now();
 
   cont.clear();
-  for (int i = 0; i != N; ++i) {
-    // generate a number between 0 and the current size of the container
-    auto n = dist(eng, Distribution::param_type{0, static_cast<int>(cont.size())});
-    // advance n positions in the container
-    auto it = cont.begin();
-    std::advance(it, n);
-    // insert the number itself in that position
-    cont.insert(it, n);
+  if constexpr (is_associative<Container>::value){
+    for (int i = 0; i != N; ++i) {
+      // insert the number i
+      cont.insert(i);
+    }
+  } else {
+    for (int i = 0; i != N; ++i) {
+      // generate a number between 0 and the current size of the container
+      auto n = dist(eng, Distribution::param_type{0, static_cast<int>(cont.size())});
+      // advance n positions in the container
+      auto it = cont.begin();
+      std::advance(it, n);
+      // insert the number itself in that position
+      cont.insert(it, n);
+    }
   }
   assert(static_cast<int>(cont.size()) == N);
 

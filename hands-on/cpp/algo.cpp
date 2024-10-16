@@ -16,15 +16,27 @@ int main()
   std::cout << v << '\n';
 
   // sum all the elements of the vector
-  // use std::accumulate
+  const auto sum = std::accumulate(v.begin(), v.end(), 0);
+  std::cout << "The sum is " << sum << std::endl;
 
   // compute the average of the first half and of the second half of the vector
+  const float avg_f = std::reduce(v.begin(), v.begin()+N/2);
+  std::cout << "The avg of first half is " << avg_f / (N/2) << std::endl;
+  const float avg_s = std::reduce(v.begin() + N/2, v.end());
+  std::cout << "The avg of second half is " << avg_s / (N/2) << std::endl;
 
   // move the three central elements to the beginning of the vector
-  // use std::rotate
+  std::rotate(v.begin(), v.begin() + N/2 - 1, v.begin() + N/2 + 2);
+  std::cout << "rotated v:\n";
+  std::cout << v << '\n';
 
   // remove duplicate elements
-  // use std::sort followed by std::unique/unique_copy
+  std::ranges::sort(v);
+  // we first sort because unqiue removes duplicate adjacent(!) elements
+  const auto [first, last] = std::ranges::unique(v);
+  v.erase(first, last);
+  std::cout << "sorted and unique v:\n";
+  std::cout << v << '\n';
 }
 
 std::ostream& operator<<(std::ostream& os, std::vector<int> const& c)
