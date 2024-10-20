@@ -37,23 +37,9 @@ int main(int argc, char **argv)
             const double x = (i - 0.5) * step;
             local_sum +=   4.0*step / (1.0 + x * x);
         }
-        // std::this_thread::sleep_for(std::chrono::seconds(1));
         tbb::spin_mutex::scoped_lock l(m);
         pi += local_sum;
     });
-
- //   const auto pi = tbb::parallel_reduce(
-   //                 tbb::blocked_range<int>(0,values.size()),
-     //               0.0,
-       //             [&](tbb::blocked_range<int> r, double total)
-         //           {
-           //             for (int i=r.begin(); i<r.end(); ++i)
-             //           {
-               //             total += values[i] * step;
-                 //       }
-
-                 //       return total;
-                   // }, std::plus<double>() );
 
 	  const auto run_time = tbb::tick_count::now() - start_time;
 	  printf("pi with %ld steps is %lf in %lf seconds\n ", num_steps, pi, run_time.seconds());
