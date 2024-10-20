@@ -1,0 +1,28 @@
+student150@hpc-201-11-40:~/esc24/hands-on/memory/false_sharing-> g++ -O0 false_sharing.cc -o false_sharing -pthread; ./false_sharing
+Time taken: 8370 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+Time taken: 3081.89 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+student150@hpc-201-11-40:~/esc24/hands-on/memory/false_sharing-> g++ -O1 false_sharing.cc -o false_sharing -pthread; ./false_sharing
+Time taken: 979.676 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+Time taken: 985.866 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+student150@hpc-201-11-40:~/esc24/hands-on/memory/false_sharing-> g++ -O2 false_sharing.cc -o false_sharing -pthread; ./false_sharing
+Time taken: 0.36494 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+Time taken: 0.101644 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+student150@hpc-201-11-40:~/esc24/hands-on/memory/false_sharing-> g++ -O3 false_sharing.cc -o false_sharing -pthread; ./false_sharing
+Time taken: 0.350828 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
+Time taken: 0.093745 milliseconds
+Counter[0] = 1073741824
+Counter[1] = 1073741824
