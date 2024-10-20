@@ -274,24 +274,11 @@ void write_to(Image const& src, Image& dst, int x, int y) {
   //int dst_y_to   = std::min(src.height_ + y, dst.height_);
   int y_height = src_y_to - src_y_from;
 
-  // Print the values
-  std::cout << "src_x_from: " << src_x_from << std::endl;
-  std::cout << "src_x_to: " << src_x_to << std::endl;
-  std::cout << "dst_x_from: " << dst_x_from << std::endl;
-  std::cout << "x_width: " << x_width << std::endl;
-
-  std::cout << "src_y_from: " << src_y_from << std::endl;
-  std::cout << "src_y_to: " << src_y_to << std::endl;
-  std::cout << "dst_y_from: " << dst_y_from << std::endl;
-  std::cout << "y_height: " << y_height << std::endl;
-
-
   auto start = std::chrono::steady_clock::now();
 
   for (int y = 0; y < y_height; ++y) {
     int src_p = ((src_y_from + y) * src.width_ + src_x_from) * src.channels_;
     int dst_p = ((dst_y_from + y) * dst.width_ + dst_x_from) * dst.channels_;
-    std::cout << y << " " << x_width << " " << src_p << std::endl;
     std::memcpy(dst.data_ + dst_p, src.data_ + src_p, x_width * src.channels_);
   }
 
