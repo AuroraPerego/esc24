@@ -39,68 +39,7 @@ struct Image {
 
   Image(std::string const& filename) { open(filename); }
 
-  Image(int width, int height, int channels) : width_(width), height_(height), channels_(channels) {
-    size_t size = width_ * height_ * channels_;
-    data_ = static_cast<unsigned char*>(stbi__malloc(size));
-    std::memset(data_, 0x00, size);
-  }
-
   ~Image() { close(); }
-
-  // copy constructor
-  Image(Image const& img) : width_(img.width_), height_(img.height_), channels_(img.channels_) {
-    size_t size = width_ * height_ * channels_;
-    data_ = static_cast<unsigned char*>(stbi__malloc(size));
-    std::memcpy(data_, img.data_, size);
-  }
-
-  // copy assignment
-  Image& operator=(Image const& img) {
-    // avoid self-copies
-    if (&img == this) {
-      return *this;
-    }
-
-    // free any existing image data
-    close();
-
-    width_ = img.width_;
-    height_ = img.height_;
-    channels_ = img.channels_;
-    size_t size = width_ * height_ * channels_;
-    data_ = static_cast<unsigned char*>(stbi__malloc(size));
-    std::memcpy(data_, img.data_, size);
-
-    return *this;
-  }
-
-  // move constructor
-  Image(Image&& img) : data_(img.data_), width_(img.width_), height_(img.height_), channels_(img.channels_) {
-    // take owndership of the image data
-    img.data_ = nullptr;
-  }
-
-  // move assignment
-  Image& operator=(Image&& img) {
-    // avoid self-moves
-    if (&img == this) {
-      return *this;
-    }
-
-    // free any existing image data
-    close();
-
-    // copy the image properties
-    width_ = img.width_;
-    height_ = img.height_;
-    channels_ = img.channels_;
-
-    // take owndership of the image data
-    data_ = img.data_;
-    img.data_ = nullptr;
-
-    return *this;
-  }
 
   void open(std::string const& filename) {
     data_ = stbi_load(filename.c_str(), &width_, &height_, &channels_, 0);
@@ -181,179 +120,6 @@ struct Image {
 
 bool verbose = false;
 
-// make a scaled copy of an image
-Image scale(Image const& src, int width, int height) {
-  if (width == src.width_ and height == src.height_) {
-    // if the dimensions are the same, return a copy of the image
-    return src;
-  }
-
-  // create a new image
-  Image out(width, height, src.channels_);
-
-  auto start = std::chrono::steady_clock::now();
-
-  for (int y = 0; y < height; ++y) {
-    // map the row of the scaled image to the nearest rows of the original image
-    float yp = static_cast<float>(y) * src.height_ / height;
-    int y0 = std::clamp(static_cast<int>(std::floor(yp)), 0, src.height_ - 1);
-    int y1 = std::clamp(static_cast<int>(std::ceil(yp)), 0, src.height_ - 1);
-
-    // interpolate between y0 and y1
-    float wy0 = yp - y0;
-    float wy1 = y1 - yp;
-    // if the new y coorindate maps to an integer coordinate in the original image, use a fake distance from identical values corresponding to it
-    if (y0 == y1) {
-      wy0 = 1.f;
-      wy1 = 1.f;
-    }
-    float dy = wy0 + wy1;
-
-    for (int x = 0; x < width; ++x) {
-      int p = (y * out.width_ + x) * out.channels_;
-
-      // map the column of the scaled image to the nearest columns of the original image
-      float xp = static_cast<float>(x) * src.width_ / width;
-      int x0 = std::clamp(static_cast<int>(std::floor(xp)), 0, src.width_ - 1);
-      int x1 = std::clamp(static_cast<int>(std::ceil(xp)), 0, src.width_ - 1);
-
-      // interpolate between x0 and x1
-      float wx0 = xp - x0;
-      float wx1 = x1 - xp;
-      // if the new x coordinate maps to an integer coordinate in the original image, use a fake distance from identical values corresponding to it
-      if (x0 == x1) {
-        wx0 = 1.f;
-        wx1 = 1.f;
-      }
-      float dx = wx0 + wx1;
-
-      // bi-linear interpolation of all channels
-      int p00 = (y0 * src.width_ + x0) * src.channels_;
-      int p10 = (y1 * src.width_ + x0) * src.channels_;
-      int p01 = (y0 * src.width_ + x1) * src.channels_;
-      int p11 = (y1 * src.width_ + x1) * src.channels_;
-
-      for (int c = 0; c < src.channels_; ++c) {
-        out.data_[p + c] =
-            static_cast<unsigned char>(std::round((src.data_[p00 + c] * wx1 * wy1 + src.data_[p10 + c] * wx1 * wy0 +
-                                                   src.data_[p01 + c] * wx0 * wy1 + src.data_[p11 + c] * wx0 * wy0) /
-                                                  (dx * dy)));
-      }
-    }
-  }
-
-  auto finish = std::chrono::steady_clock::now();
-  float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
-  if (verbose) {
-    std::cerr << fmt::format("scale:      {:6.2f}", ms) << " ms\n";
-  }
-
-  return out;
-}
-
-// copy a source image into a target image, cropping any parts that fall outside the target image
-void write_to(Image const& src, Image& dst, int x, int y) {
-  // copying to an image with a different number of channels is not supported
-  assert(src.channels_ == dst.channels_);
-
-  // the whole source image would fall outside of the target image along the X axis
-  if ((x + src.width_ < 0) or (x >= dst.width_)) {
-    return;
-  }
-
-  // the whole source image would fall outside of the target image along the Y axis
-  if ((y + src.height_ < 0) or (y >= dst.height_)) {
-    return;
-  }
-
-  // find the valid range for the overlapping part of the images along the X and Y axes
-  int src_x_from = std::max(0, -x);
-  int src_x_to = std::min(src.width_, dst.width_ - x);
-  int dst_x_from = std::max(0, x);
-  //int dst_x_to   = std::min(src.width_ + x, dst.width_);
-  int x_width = src_x_to - src_x_from;
-
-  int src_y_from = std::max(0, -y);
-  int src_y_to = std::min(src.height_, dst.height_ - y);
-  int dst_y_from = std::max(0, y);
-  //int dst_y_to   = std::min(src.height_ + y, dst.height_);
-  int y_height = src_y_to - src_y_from;
-
-  auto start = std::chrono::steady_clock::now();
-
-  for (int y = 0; y < y_height; ++y) {
-    int src_p = ((src_y_from + y) * src.width_ + src_x_from) * src.channels_;
-    int dst_p = ((dst_y_from + y) * dst.width_ + dst_x_from) * dst.channels_;
-    std::memcpy(dst.data_ + dst_p, src.data_ + src_p, x_width * src.channels_);
-  }
-
-  auto finish = std::chrono::steady_clock::now();
-  float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
-  if (verbose) {
-    std::cerr << fmt::format("write_to:   {:6.2f}", ms) << " ms\n";
-  }
-}
-
-// convert an image to grayscale
-Image grayscale(Image const& src) {
-  // non-RGB images are not supported
-  assert(src.channels_ >= 3);
-
-  auto start = std::chrono::steady_clock::now();
-
-  Image dst = src;
-  for (int y = 0; y < dst.height_; ++y) {
-    for (int x = 0; x < dst.width_; ++x) {
-      int p = (y * dst.width_ + x) * dst.channels_;
-      int r = dst.data_[p];
-      int g = dst.data_[p + 1];
-      int b = dst.data_[p + 2];
-      // NTSC values for RGB to grayscale conversion
-      int y = (299 * r + 587 * g + 114 * b) / 1000;
-      dst.data_[p] = y;
-      dst.data_[p + 1] = y;
-      dst.data_[p + 2] = y;
-    }
-  }
-
-  auto finish = std::chrono::steady_clock::now();
-  float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
-  if (verbose) {
-    std::cerr << fmt::format("grayscale:  {:6.2f}", ms) << " ms\n";
-  }
-
-  return dst;
-}
-
-// apply an RGB tint to an image
-Image tint(Image const& src, int r, int g, int b) {
-  // non-RGB images are not supported
-  assert(src.channels_ >= 3);
-
-  auto start = std::chrono::steady_clock::now();
-
-  Image dst = src;
-  for (int y = 0; y < dst.height_; ++y) {
-    for (int x = 0; x < dst.width_; ++x) {
-      int p = (y * dst.width_ + x) * dst.channels_;
-      int r0 = dst.data_[p];
-      int g0 = dst.data_[p + 1];
-      int b0 = dst.data_[p + 2];
-      dst.data_[p] = r0 * r / 255;
-      dst.data_[p + 1] = g0 * g / 255;
-      dst.data_[p + 2] = b0 * b / 255;
-    }
-  }
-
-  auto finish = std::chrono::steady_clock::now();
-  float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
-  if (verbose) {
-    std::cerr << fmt::format("tint:       {:6.2f}", ms) << " ms\n";
-  }
-
-  return dst;
-}
-
 int main(int argc, const char* argv[]) {
   const char* verbose_env = std::getenv("VERBOSE");
   if (verbose_env != nullptr and std::strlen(verbose_env) != 0) {
@@ -400,7 +166,7 @@ int main(int argc, const char* argv[]) {
     auto& img = *(in_h.data());
     img = images[i];
     img.open(files[i]);
-    //img.show(columns, rows);
+    img.show(columns, rows);
 
     // device allocations
     auto in_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
@@ -415,8 +181,16 @@ int main(int argc, const char* argv[]) {
     const auto w = img.width_;
     const auto h = img.height_;
     const auto c = img.channels_;
-    auto out1_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{w * 0.5 * h * 0.5 * c});
+	const float scale = 0.5f;
+    const auto sizeSmall = w * scale * h * scale * c;
+    auto out1_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
     out1_d->data_ = out1_data.data();
+    auto out2_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    out2_d->data_ = out2_data.data();
+    auto out3_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    out3_d->data_ = out3_data.data();
+    auto out4_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    out4_d->data_ = out4_data.data();
 
     // process on device
     auto const& workDiv = makeWorkDiv<Acc2D>(Vec2D{(w+32-1)/32.,32},Vec2D{(h+32-1)/32.,32});
@@ -424,28 +198,31 @@ int main(int argc, const char* argv[]) {
             queue, workDiv, ScaleKernel{}, in_d.data(), out1_d.data(), img.width_ * 0.5, img.height_ * 0.5);
     alpaka::exec<Acc2D>(
             queue, workDiv, GrayScaleKernel{}, out1_d.data());
+    alpaka::exec<Acc2D>(
+            queue, workDiv, TintKernel{}, out1_d.data(), out2_d.data(), 168, 56, 172);
+    alpaka::exec<Acc2D>(
+            queue, workDiv, TintKernel{}, out1_d.data(), out3_d.data(), 100, 143, 47);
+    alpaka::exec<Acc2D>(
+            queue, workDiv, TintKernel{}, out1_d.data(), out4_d.data(), 255, 162, 36);
 
-    // process on host
-    Image small = scale(img, img.width_ * 0.5, img.height_ * 0.5);
-    Image gray = grayscale(small);
-    Image tone1 = tint(gray, 168, 56, 172);  // purple-ish
-    Image tone2 = tint(gray, 100, 143, 47);  // green-ish
-    Image tone3 = tint(gray, 255, 162, 36);  // gold-ish
-
-    Image out(img.width_, img.height_, img.channels_);
-    write_to(tone1, out, 0, 0);
-    write_to(tone2, out, img.width_ * 0.5, 0);
-    write_to(tone3, out, 0, img.height_ * 0.5);
-    write_to(gray, out, img.width_ * 0.5, img.height_ * 0.5);
+    auto out_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{h*w*c});
+	out_d->data_ = out_data.data();
+    WriteTo(queue, img, out1_data, out_data, 0, 0, scale);
+    WriteTo(queue, img, out2_data, out_data, w * 0.5, 0, scale);
+    WriteTo(queue, img, out3_data, out_data, 0, h * 0.5, scale);
+    WriteTo(queue, img, out4_data, out_data, w * 0.5, h * 0.5, scale);
 
     // copy to host
-    alpaka::memcpy(queue, out_h, out1_d);
+    auto out_h_data = alpaka::allocMappedBuf<unsigned char, uint32_t>(alpaka::getDevByIdx(platformHost, 0u), platform, Vec1D{w*h*c});
+    alpaka::memcpy(queue, out_h, out_d);
+    alpaka::memcpy(queue, out_h_data, out_data);
+	out_h->data_ = out_h_data.data();
     alpaka::wait(queue);
-    auto& outgpu = *(alpaka::getPtrNative(out_h));
+    Image* const outgpu = alpaka::getPtrNative(out_h);
 
     std::cout << '\n';
-    outgpu.show(columns, rows);
-    outgpu.write(fmt::format("out{:02d}.jpg", i));
+    outgpu->show(columns, rows);
+    outgpu->write(fmt::format("out{:02d}.jpg", i));
   }
   auto finish = std::chrono::steady_clock::now();
   float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;

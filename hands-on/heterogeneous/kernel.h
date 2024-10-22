@@ -2,7 +2,7 @@
 
 namespace math {
   template<typename T>
-  T clamp(T value, T low, T high){
+  ALPAKA_FN_ACC T clamp(T const& value, T const& low, T const& high){
     return (value < low) ? low : (high < value) ? high : value;
   }
 }
@@ -28,7 +28,7 @@ struct ScaleKernel
         for(auto ndindex : alpaka::uniformElementsND(acc, Vec2D{width, height}))
         {
           auto y = ndindex[1];
-          auto x = ndindex[0]; // * width + ndindex[1];
+          auto x = ndindex[0];
     // map the row of the scaled image to the nearest rows of the original image
     float yp = static_cast<float>(y) * in->height_ / height;
     int y0 = math::clamp(static_cast<int>(alpaka::math::floor(acc, yp)), 0, in->height_ - 1);
@@ -86,7 +86,7 @@ struct GrayScaleKernel
     {
         for(auto ndindex : alpaka::uniformElementsND(acc, Vec2D{out->width_, out->height_}))
         {
-          auto x = ndindex[0] * out->width_ + ndindex[1];
+          auto x = ndindex[1] * out->width_ + ndindex[0];
       int p = x * out->channels_;
       int r = out->data_[p];
       int g = out->data_[p + 1];
@@ -99,3 +99,106 @@ struct GrayScaleKernel
         }
     }
 };
+
+struct TintKernel
+{
+    template<typename TAcc, typename T>
+	ALPAKA_FN_ACC void operator()(
+        TAcc const& acc,
+        T const* __restrict__ in,
+        T* __restrict__ out,
+        const int r,
+        const int g,
+        const int b) const
+	{
+        out->height_ = in->height_;
+        out->width_ = in->width_;
+        out->channels_ = in->channels_;
+        for(auto ndindex : alpaka::uniformElementsND(acc, Vec2D{out->width_, out->height_}))
+		{
+          auto x = ndindex[1] * out->width_ + ndindex[0];
+            int p = x * out->channels_;
+            int r0 = out->data_[p];
+            int g0 = out->data_[p + 1];
+            int b0 = out->data_[p + 2];
+            out->data_[p] = r0 * r / 255;
+            out->data_[p + 1] = g0 * g / 255;
+            out->data_[p + 2] = b0 * b / 255;
+        }
+	}
+
+};
+
+template<typename TQueue, typename Image, typename T>
+void WriteTo (TQueue& queue, Image const& img, T& in, T& out, const int x, const int y, const float scale)
+{
+  const auto w = img.width_;
+  const auto h = img.height_;
+  const auto c = img.channels_;
+  // the whole source image would fall outside of the target image along the X axis
+  if ((x + (int)(scale*w) < 0) or (x >= w))
+    return;
+  // the whole source image would fall outside of the target image along the Y axis
+  if ((y + (int)(scale*h) < 0) or (y >= h))
+	return;
+
+  // find the valid range for the overlapping part of the images along the X and Y axes
+  int src_x_from = std::max(0, -x);
+  int src_x_to = std::min((int)(w*scale), w - x);
+  int dst_x_from = std::max(0, x);
+  int x_width = src_x_to - src_x_from;
+
+  int src_y_from = std::max(0, -y);
+  int src_y_to = std::min((int)(h*scale), h - y);
+  int dst_y_from = std::max(0, y);
+  int y_height = src_y_to - src_y_from;
+
+  for (int y = 0; y < y_height; ++y) {
+    int src_p = ((src_y_from + y) * (int)(w*scale) + src_x_from) * c;
+    int dst_p = ((dst_y_from + y) * w + dst_x_from) * c;
+	auto const& subViewIn = alpaka::createSubView(in, Vec1D{x_width * c}, Vec1D{src_p});
+	auto subViewOut = alpaka::createSubView(out, Vec1D{x_width * c}, Vec1D{dst_p});
+	alpaka::memcpy(queue, std::move(subViewOut), subViewIn, Vec1D{x_width * c});
+  }
+}
+
+//struct WriteToKernel
+//{
+//    template<typename TAcc, typename T>
+//	ALPAKA_FN_ACC void operator()(
+//        TAcc const& acc,
+//        const int x,
+//        const int y) const
+//	{
+//         // the whole source image would fall outside of the target image along the X axis
+//         if ((x + in->width_ < 0) or (x >= out->width_)) {
+//           return;
+//         }
+//
+//         // the whole source image would fall outside of the target image along the Y axis
+//         if ((y + in->height_ < 0) or (y >= out->height_)) {
+//           return;
+//         }
+//
+//         // find the valid range for the overlapping part of the images along the X and Y axes
+//         int src_x_from = alpaka::math::max(acc, 0, -x);
+//         int src_x_to = alpaka::math::min(acc, in->width_, out->width_ - x);
+//         int dst_x_from = alpaka::math::max(acc, 0, x);
+//         //int dst_x_to   = alpaka::math::min(acc, in->width_ + x, out->width_);
+//         int x_width = src_x_to - src_x_from;
+//
+//         int src_y_from = alpaka::math::max(acc, 0, -y);
+//         int src_y_to = alpaka::math::min(acc, in->height_, out->height_ - y);
+//         int dst_y_from = alpaka::math::max(acc, 0, y);
+//         //int dst_y_to   = std::min(in->height_ + y, out->height_);
+//         int y_height = src_y_to - src_y_from;
+//
+//         for(auto y : alpaka::uniformElements(acc, out->height_)) {
+//           int src_p = ((src_y_from + y) * in->width_ + src_x_from) * in->channels_;
+//           int dst_p = ((dst_y_from + y) * out->width_ + dst_x_from) * out->channels_;
+//		   out->data_[dst_p] = in->data_[src_p];
+//		   //auto dest = out->data_ + dst_p;
+//		   //dest = in->data_ + src_p; // FIXME
+//         }
+//	}
+//};
