@@ -7,10 +7,10 @@
 #include <stdexcept>
 #include <vector>
 
-#include <alpaka/alpaka.hpp>
-#include "config.h"
 #include "WorkDiv.h"
+#include "config.h"
 #include "kernel.h"
+#include <alpaka/alpaka.hpp>
 
 #ifdef __linux__
 #include <sys/ioctl.h>
@@ -24,40 +24,50 @@
 #include "stb_image_write.h"
 
 #define FMT_HEADER_ONLY
-#include "fmt/core.h"
 #include "fmt/color.h"
+#include "fmt/core.h"
 
 using namespace std::literals;
 
 struct Image {
-  unsigned char* data_ = nullptr;
+  unsigned char *data_ = nullptr;
   int width_ = 0;
   int height_ = 0;
   int channels_ = 0;
 
   Image() {}
 
-  Image(std::string const& filename) { open(filename); }
+  Image(std::string const &filename) { open(filename); }
+
+  Image(int width, int height, int channels, unsigned char *data)
+      : width_(width), height_(height), channels_(channels) {
+    size_t size = width_ * height_ * channels_;
+    data_ = static_cast<unsigned char *>(stbi__malloc(size));
+    std::memcpy(data_, data, size);
+  }
 
   ~Image() { close(); }
 
-  void open(std::string const& filename) {
+  void open(std::string const &filename) {
     data_ = stbi_load(filename.c_str(), &width_, &height_, &channels_, 0);
     if (data_ == nullptr) {
       throw std::runtime_error("Failed to load "s + filename);
     }
-    std::cout << "Loaded image with " << width_ << " x " << height_ << " pixels and " << channels_ << " channels from "
-              << filename << '\n';
+    std::cout << "Loaded image with " << width_ << " x " << height_
+              << " pixels and " << channels_ << " channels from " << filename
+              << '\n';
   }
 
-  void write(std::string const& filename) {
+  void write(std::string const &filename) {
     if (filename.ends_with(".png")) {
-      int status = stbi_write_png(filename.c_str(), width_, height_, channels_, data_, 0);
+      int status = stbi_write_png(filename.c_str(), width_, height_, channels_,
+                                  data_, 0);
       if (status == 0) {
         throw std::runtime_error("Error while writing PNG file "s + filename);
       }
     } else if (filename.ends_with(".jpg") or filename.ends_with(".jpeg")) {
-      int status = stbi_write_jpg(filename.c_str(), width_, height_, channels_, data_, 95);
+      int status = stbi_write_jpg(filename.c_str(), width_, height_, channels_,
+                                  data_, 95);
       if (status == 0) {
         throw std::runtime_error("Error while writing JPEG file "s + filename);
       }
@@ -73,7 +83,8 @@ struct Image {
     data_ = nullptr;
   }
 
-  // show an image on the terminal, using up to max_width columns (with one block per column) and up to max_height lines (with two blocks per line)
+  // show an image on the terminal, using up to max_width columns (with one
+  // block per column) and up to max_height lines (with two blocks per line)
   void show(int max_width, int max_height) {
     if (data_ == nullptr) {
       return;
@@ -82,7 +93,8 @@ struct Image {
     // two blocks per line
     max_height = max_height * 2;
 
-    // find the best size given the max width and height and the image aspect ratio
+    // find the best size given the max width and height and the image aspect
+    // ratio
     int width, height;
     if (width_ * max_height > height_ * max_width) {
       width = max_width;
@@ -120,8 +132,8 @@ struct Image {
 
 bool verbose = false;
 
-int main(int argc, const char* argv[]) {
-  const char* verbose_env = std::getenv("VERBOSE");
+int main(int argc, const char *argv[]) {
+  const char *verbose_env = std::getenv("VERBOSE");
   if (verbose_env != nullptr and std::strlen(verbose_env) != 0) {
     verbose = true;
   }
@@ -157,75 +169,80 @@ int main(int argc, const char* argv[]) {
   auto queue = Queue{device};
 
   auto start = std::chrono::steady_clock::now();
-  std::vector<Image> images;
-  images.resize(files.size());
+  // std::vector<Image> images;
+  // images.resize(files.size());
   for (unsigned int i = 0; i < files.size(); ++i) {
-    // host allocations
-    auto in_h = alpaka::allocMappedBuf<Image, uint32_t>(alpaka::getDevByIdx(platformHost, 0u), platform, Scalar{});
-    auto out_h = alpaka::allocMappedBuf<Image, uint32_t>(alpaka::getDevByIdx(platformHost, 0u), platform, Scalar{});
-    auto& img = *(in_h.data());
-    img = images[i];
+    Image img;
     img.open(files[i]);
     img.show(columns, rows);
 
-    // device allocations
-    auto in_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-    auto out1_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-    auto out2_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-    auto out3_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-    auto out4_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-    auto out_d = alpaka::allocAsyncBuf<Image, uint32_t>(queue, Scalar{});
-
-    // copy to device
-    alpaka::memcpy(queue, in_d, in_h);
     const auto w = img.width_;
     const auto h = img.height_;
     const auto c = img.channels_;
-	const float scale = 0.5f;
+    const auto size = w * h * c;
+    const float scale = 0.5f;
     const auto sizeSmall = w * scale * h * scale * c;
-    auto out1_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
-    out1_d->data_ = out1_data.data();
-    auto out2_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
-    out2_d->data_ = out2_data.data();
-    auto out3_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
-    out3_d->data_ = out3_data.data();
-    auto out4_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
-    out4_d->data_ = out4_data.data();
+
+    auto in_h = alpaka::allocMappedBuf<unsigned char, uint32_t>(
+        alpaka::getDevByIdx(platformHost, 0u), platform, Vec1D{size});
+    auto out_h = alpaka::allocMappedBuf<unsigned char, uint32_t>(
+        alpaka::getDevByIdx(platformHost, 0u), platform, Vec1D{size});
+
+    std::memcpy(in_h.data(), img.data_, size);
+
+    // device allocations
+    auto in_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{size});
+    auto out_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{size});
+
+    auto out1_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    auto out2_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    auto out3_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+    auto out4_d =
+        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+
+    // copy to device
+    alpaka::memcpy(queue, in_d, in_h);
 
     // process on device
-    auto const& workDiv = makeWorkDiv<Acc2D>(Vec2D{(w+32-1)/32.,32},Vec2D{(h+32-1)/32.,32});
-    alpaka::exec<Acc2D>(
-            queue, workDiv, ScaleKernel{}, in_d.data(), out1_d.data(), img.width_ * 0.5, img.height_ * 0.5);
-    alpaka::exec<Acc2D>(
-            queue, workDiv, GrayScaleKernel{}, out1_d.data());
-    alpaka::exec<Acc2D>(
-            queue, workDiv, TintKernel{}, out1_d.data(), out2_d.data(), 168, 56, 172);
-    alpaka::exec<Acc2D>(
-            queue, workDiv, TintKernel{}, out1_d.data(), out3_d.data(), 100, 143, 47);
-    alpaka::exec<Acc2D>(
-            queue, workDiv, TintKernel{}, out1_d.data(), out4_d.data(), 255, 162, 36);
+    auto const &workDiv = makeWorkDiv<Acc2D>(
+        Vec2D{(w + 32 - 1) / 32., (h + 32 - 1) / 32.}, Vec2D{32, 32});
+    alpaka::exec<Acc2D>(queue, workDiv, ScaleKernel{}, in_d.data(),
+                        out1_d.data(), w, h, c, scale);
+    alpaka::exec<Acc2D>(queue, workDiv, GrayScaleKernel{}, out1_d.data(),
+                        w * scale, h * scale, c);
+    alpaka::exec<Acc2D>(queue, workDiv, TintKernel{}, out1_d.data(),
+                        out2_d.data(), 168, 56, 172, w * scale, h * scale, c);
+    alpaka::exec<Acc2D>(queue, workDiv, TintKernel{}, out1_d.data(),
+                        out3_d.data(), 100, 143, 47, w * scale, h * scale, c);
+    alpaka::exec<Acc2D>(queue, workDiv, TintKernel{}, out1_d.data(),
+                        out4_d.data(), 255, 162, 36, w * scale, h * scale, c);
 
-    auto out_data =  alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{h*w*c});
-	out_d->data_ = out_data.data();
-    WriteTo(queue, img, out1_data, out_data, 0, 0, scale);
-    WriteTo(queue, img, out2_data, out_data, w * 0.5, 0, scale);
-    WriteTo(queue, img, out3_data, out_data, 0, h * 0.5, scale);
-    WriteTo(queue, img, out4_data, out_data, w * 0.5, h * 0.5, scale);
+    WriteTo(queue, out1_d, out_d, 0, 0, w, h, c, scale);
+    WriteTo(queue, out2_d, out_d, w * 0.5, 0, w, h, c, scale);
+    WriteTo(queue, out3_d, out_d, 0, h * 0.5, w, h, c, scale);
+    WriteTo(queue, out4_d, out_d, w * 0.5, h * 0.5, w, h, c, scale);
 
     // copy to host
-    auto out_h_data = alpaka::allocMappedBuf<unsigned char, uint32_t>(alpaka::getDevByIdx(platformHost, 0u), platform, Vec1D{w*h*c});
     alpaka::memcpy(queue, out_h, out_d);
-    alpaka::memcpy(queue, out_h_data, out_data);
-	out_h->data_ = out_h_data.data();
     alpaka::wait(queue);
-    Image* const outgpu = alpaka::getPtrNative(out_h);
+    unsigned char *out_data = alpaka::getPtrNative(out_h);
+
+    Image out(w, h, c, out_data);
 
     std::cout << '\n';
-    outgpu->show(columns, rows);
-    outgpu->write(fmt::format("out{:02d}.jpg", i));
+    out.show(columns, rows);
+    out.write(fmt::format("out{:02d}.jpg", i));
   }
   auto finish = std::chrono::steady_clock::now();
-  float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
+  float ms =
+      std::chrono::duration_cast<std::chrono::duration<float>>(finish - start)
+          .count() *
+      1000.f;
   if (true) {
     std::cerr << fmt::format("total:      {:6.2f}", ms) << " ms\n";
   }
