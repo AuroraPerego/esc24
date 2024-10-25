@@ -15,7 +15,11 @@
 // Part 2 of 4: implement the kernel
 __global__ void kernel(int* a, int dimx, int dimy)
 {
-  ___
+  auto const x = threadIdx.x + blockDim.x * blockIdx.x;
+  auto const y = threadIdx.y + blockDim.y * blockIdx.y;
+  if (x < dimx and y < dimy) {
+    a[x+dimx*y] = x+dimx*y;
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,8 +34,8 @@ int main()
   CUDA_CHECK(cudaStreamCreate(&queue));
 
   // Part 1 and 4 of 4: set the dimensions of the matrix
-  int dimx = ___;
-  int dimy = ___;
+  int dimx = 19;
+  int dimy = 67;
 
   // Allocate enough memory on the host
   std::vector<int> h_a(dimx * dimy);
@@ -41,20 +45,20 @@ int main()
   int* d_a;
 
   // Allocate enough memory on the device
-  CUDA_CHECK(cudaMallocAsync(___));
+  CUDA_CHECK(cudaMallocAsync(&d_a, num_bytes, queue));
 
   // Part 2 of 4: define grid and block size and launch the kernel
   dim3 numberOfBlocks, numberOfThreadsPerBlock;
-  numberOfThreadsPerBlock.x = ___;
-  numberOfThreadsPerBlock.y = ___;
-  numberOfBlocks.x  = ___;
-  numberOfBlocks.y  = ___;
+  numberOfThreadsPerBlock.x = 32;
+  numberOfThreadsPerBlock.y = 32;
+  numberOfBlocks.x  = (numberOfThreadsPerBlock.x+dimx-1)/numberOfThreadsPerBlock.x;
+  numberOfBlocks.y  = (numberOfThreadsPerBlock.y+dimy-1)/numberOfThreadsPerBlock.y;
 
   kernel<<<numberOfBlocks, numberOfThreadsPerBlock, 0, queue>>>(d_a, dimx, dimy);
   CUDA_CHECK(cudaGetLastError());
 
   // Device to host copy
-  CUDA_CHECK(cudaMemcpyAsync(___));
+  CUDA_CHECK(cudaMemcpyAsync(h_a.data(), d_a, num_bytes, cudaMemcpyDeviceToHost, queue));
 
   // Free the device memory
   CUDA_CHECK(cudaFreeAsync(d_a, queue));
@@ -66,8 +70,9 @@ int main()
 
   // verify the data returned to the host is correct
   for (int row = 0; row < dimy; ++row) {
-    for (int col = 0; col < dimx; ++col)
+    for (int col = 0; col < dimx; ++col) {
       assert(h_a[row * dimx + col] == row * dimx + col);
+    }
   }
 
   // Destroy the CUDA stream
