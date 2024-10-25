@@ -11,20 +11,18 @@
 **           No structures or file-scope issues (T. Mattson, Nov. 2023)
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
 #include <omp.h>
+#include <iostream>
 
 # define NPOINTS 1000
-# define MAXITER 10000
-# define eps 1.e-5
+# define MAXITER 100000
 
 void testpoint(double, double);
 
 int numoutside = 0;
 
 int main(){
+   constexpr double eps = 1.e-5;
    double area, error = 1.0e-5;
 
 //   Loop over grid of points in the complex plane which contains the Mandelbrot

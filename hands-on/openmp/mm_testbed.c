@@ -1,8 +1,8 @@
 /*
 **  PROGRAM: Matrix Multiplication test bed
 **
-**  PURPOSE: This program will test various methods for 
-**           multiplying matrices. 
+**  PURPOSE: This program will test various methods for
+**           multiplying matrices.
 **
 **                C  += A * B
 **
@@ -15,10 +15,10 @@
 **           of matrix index values.
 **
 **  USAGE:   Run wtihout arguments to use default SIZE set in the
-**           mm_utils.h include file ... for example  
+**           mm_utils.h include file ... for example
 **              mm_testbed
 **
-**           Run with a single argument to generare rectangular matrices 
+**           Run with a single argument to generare rectangular matrices
 **           and use fixed ratios of matrix dimensions ... for example
 **              mm_testbed   25
 **
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 {
    int Ndim, Mdim, Pdim;   /* A[N][P], B[P][M], C[N][M] */
    int Matrix_size;
-   TYPE *A, *B, *C; 
+   TYPE *A, *B, *C;
 
 // set matrix dimensions and allocate memory for matrices
    if(argc ==2){
@@ -70,4 +70,7 @@ int main(int argc, char **argv)
    printf(" triple loop, ijk case %d %d %d\n", Ndim, Mdim, Pdim);
    mm_tst_cases(NTRIALS, Ndim, Mdim, Pdim, A, B, C, &mm_ijk);
 
+   free(A);
+   free(B);
+   free(C);
 }
