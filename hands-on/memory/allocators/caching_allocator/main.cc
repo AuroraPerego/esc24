@@ -32,15 +32,15 @@ int main() {
   std::uniform_int_distribution<int> distribution(5000, 10000);
 
   const int NIter = 10;
-  CachingAllocator allocator(true);
+  CachingAllocator allocator(false);
   Timer timer;
 
   for (int it = 0; it < NIter; ++it) {
     const int N = distribution(gen);
     ParticleSoA particles;
-    particles.x = static_cast<double *>(allocator.allocate(sizeof(double) * N));
-    particles.y = static_cast<double *>(allocator.allocate(sizeof(double) * N));
-    particles.z = static_cast<double *>(allocator.allocate(sizeof(double) * N));
+    particles.x = reinterpret_cast<double *>(allocator.allocate(sizeof(double) * N));
+    particles.y = reinterpret_cast<double *>(allocator.allocate(sizeof(double) * N));
+    particles.z = reinterpret_cast<double *>(allocator.allocate(sizeof(double) * N));
     // Fill vectors x and y
     for (int i = 0; i < N; ++i) {
       particles.x[i] = static_cast<double>(i);
@@ -55,6 +55,7 @@ int main() {
     // Check the result for correctness
     for (int i = 0; i < N; ++i) {
       if (particles.z[i] != particles.x[i] + particles.y[i]) {
+        std::cout << particles.z[i] << " != " << particles.x[i] + particles.y[i] << "\n";
         std::cerr << "Result is incorrect!" << std::endl;
         return 1; // Return an error code
       }
@@ -76,6 +77,8 @@ int main() {
     int NPart = distribution(gen);
     const int N = NPart;
     ParticleSoAVec particlesVec;
+    particlesVec.x.reserve(N);
+    particlesVec.y.reserve(N);
     particlesVec.z.resize(N);
     for (int i = 0; i < N; ++i) {
       particlesVec.x.push_back(static_cast<double>(i));
@@ -86,9 +89,12 @@ int main() {
     for (int i = 0; i < N; ++i) {
       particlesVec.z[i] = particlesVec.x[i] + particlesVec.y[i];
     }
+    //std::transform(particlesVec.x.begin(), particlesVec.x.end(), particlesVec.y.begin(), particlesVec.z.begin(), std::plus<double>());
+
     // Check the result for correctness
     for (int i = 0; i < N; ++i) {
       if (particlesVec.z[i] != particlesVec.x[i] + particlesVec.y[i]) {
+        std::cout << particlesVec.z[i] << " != " << particlesVec.x[i] + particlesVec.y[i] << "\n";
         std::cerr << "Result is incorrect!" << std::endl;
         return 1; // Return an error code
       }

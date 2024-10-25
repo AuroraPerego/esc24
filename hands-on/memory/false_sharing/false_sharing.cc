@@ -33,7 +33,7 @@ struct Counter {
 };
 
 // fix this one!
-struct GoodCounter {
+struct alignas(std::hardware_destructive_interference_size) GoodCounter {
   int value = 0;
 };
 
