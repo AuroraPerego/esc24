@@ -1,3 +1,4 @@
+#include <cassert>
 #include <iostream>
 #include <chrono>
 #include <vector>
@@ -25,26 +26,39 @@ class String {
   }
   String& operator=(String const& other)
   {
-    // to be implemented
+    if (this != &other){
+      delete [] s_;
+      const auto size = other.size();
+      s_ = new char[size];
+      std::memcpy(s_, other.c_str(), size);
+    }
+    return *this;
   }
   String& operator=(String&& other)
   {
-    // to be implemented
+    if (this != &other){
+      s_ = std::move(other.c_str());
+    }
+    return *this;
   }
   std::size_t size() const {
     return s_ ? strlen(s_) : 0;
   }
+  char* c_str()
+  {
+    return s_;
+  }
   char const* c_str() const
   {
-    // to be implemented;
+    return s_;
   }
   char& operator[](std::size_t n)
   {
-    // to be implemented
+    return s_[n];
   }
   char const& operator[](std::size_t n) const
   {
-    // to be implemented
+    return s_[n];
   }
 };
 
@@ -56,17 +70,21 @@ String get_string()
 int main()
 {
   String const s1("Lorem ipsum dolor sit amet");
+  std::cout << "s1: " << s1.c_str() << '\n';
 
   String s2 = get_string();
+  std::cout << "s2: " << s2.c_str() << '\n';
 
   String s3;
   s3 = s1;
 
   String s4;
   s4 = std::move(s2);
+  std::cout << "s4: " << s4.c_str() << '\n';
 
   char& c1 = s4[4];
   char const& c2 = s1[4];
+  std::cout << "c1 " << c1 << " c2 " << c2 << std::endl;
 
-  std::cout << s3.c_str() << '\n';
+  std::cout << "s3: " << s3.c_str() << '\n';
 }

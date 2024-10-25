@@ -19,7 +19,8 @@ std::ostream& operator<<(std::ostream& os, std::vector<T> const& c)
   return os;
 }
 
-std::vector<std::string> entries(/* add the right parameters here */)
+template <typename T>
+std::vector<std::string> entries(T const& dir)
 {
   std::vector<std::string> result;
 
@@ -32,23 +33,33 @@ std::vector<std::string> entries(/* add the right parameters here */)
   //   char d_name[256];
   // };
   //
-  // dirent entry;
-  // for (auto* r = &entry; readdir_r(dir, &entry, &r) == 0 && r; ) {
-  //   // here `entry.d_name` is the name of the current entry
-  // }
+  dirent entry;
+  for (auto* r = &entry; readdir_r(dir.get(), &entry, &r) == 0 && r; ) {
+    result.emplace_back(entry.d_name); // here `entry.d_name` is the name of the current entry
+  }
 
   return result;
 }
+
+class MyDeleter {
+  public:
+    void operator()(DIR* d){
+      closedir(d);
+    }
+};
 
 int main(int argc, char* argv[])
 {
   std::string const name = argc > 1 ? argv[1] : ".";
 
   // create a smart pointer to a DIR here, with a deleter
+  using Deleter = void (*) (DIR*); // pointer to a function
+  auto dir = std::unique_ptr<DIR, Deleter>{opendir(name.c_str()), [](auto d) { closedir(d); }};
+  [[maybe_unused]] auto shared_dir = std::shared_ptr<DIR>(opendir(name.c_str()), [](auto d) { closedir(d); });
   // relevant functions and data structures are
   // DIR* opendir(const char* name);
   // int  closedir(DIR* dirp);
 
-  std::vector<std::string> v = entries(/* add the right argument here */);
+  std::vector<std::string> v = entries(dir);
   std::cout << v << '\n';
 }
