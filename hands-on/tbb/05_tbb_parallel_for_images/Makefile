@@ -13,6 +13,8 @@ stb:
 fmt:
 	git clone https://github.com/fmtlib/fmt.git
 
+BASE := /home/HPC/student150/esc24/hands-on/tbb/04_images
+
 test: test.cc Makefile stb fmt
-	$(CXX) -std=c++20 -O3 -g -Istb -Ifmt/include -Wall -march=native -ltbb $< -o $@
+	$(CXX) -std=c++20 -O3 -g -I$(BASE)/stb -I$(BASE)/fmt/include -Wall -march=native -ltbb $< -o $@
 

@@ -4,12 +4,8 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
-#include <syncstream>
-//#include <mutex>
 #include <stdexcept>
 #include <vector>
-
-#include <tbb/tbb.h>
 
 #ifdef __linux__
 #include <sys/ioctl.h>
@@ -102,12 +98,11 @@ struct Image {
   }
 
   void open(std::string const& filename) {
-    std::osyncstream out(std::cout);
     data_ = stbi_load(filename.c_str(), &width_, &height_, &channels_, 0);
     if (data_ == nullptr) {
       throw std::runtime_error("Failed to load "s + filename);
     }
-    out << "Loaded image with " << width_ << " x " << height_ << " pixels and " << channels_ << " channels from "
+    std::cout << "Loaded image with " << width_ << " x " << height_ << " pixels and " << channels_ << " channels from "
               << filename << '\n';
   }
 
@@ -139,7 +134,6 @@ struct Image {
     if (data_ == nullptr) {
       return;
     }
-    std::osyncstream out(std::cout);
 
     // two blocks per line
     max_height = max_height * 2;
@@ -173,9 +167,9 @@ struct Image {
           b = data_[p + 2];
           style |= fmt::bg(fmt::rgb(r, g, b));
         }
-        out << fmt::format(style, "▀");
+        std::cout << fmt::format(style, "▀");
       }
-      out << '\n';
+      std::cout << '\n';
     }
   }
 };
@@ -280,11 +274,24 @@ void write_to(Image const& src, Image& dst, int x, int y) {
   //int dst_y_to   = std::min(src.height_ + y, dst.height_);
   int y_height = src_y_to - src_y_from;
 
+  // Print the values
+  std::cout << "src_x_from: " << src_x_from << std::endl;
+  std::cout << "src_x_to: " << src_x_to << std::endl;
+  std::cout << "dst_x_from: " << dst_x_from << std::endl;
+  std::cout << "x_width: " << x_width << std::endl;
+
+  std::cout << "src_y_from: " << src_y_from << std::endl;
+  std::cout << "src_y_to: " << src_y_to << std::endl;
+  std::cout << "dst_y_from: " << dst_y_from << std::endl;
+  std::cout << "y_height: " << y_height << std::endl;
+
+
   auto start = std::chrono::steady_clock::now();
 
   for (int y = 0; y < y_height; ++y) {
     int src_p = ((src_y_from + y) * src.width_ + src_x_from) * src.channels_;
     int dst_p = ((dst_y_from + y) * dst.width_ + dst_x_from) * dst.channels_;
+    std::cout << y << " " << x_width << " " << src_p << std::endl;
     std::memcpy(dst.data_ + dst_p, src.data_ + src_p, x_width * src.channels_);
   }
 
@@ -385,17 +392,13 @@ int main(int argc, const char* argv[]) {
   }
 #endif
 
-  //std::mutex mutex;
-
   auto start = std::chrono::steady_clock::now();
   std::vector<Image> images;
   images.resize(files.size());
-  tbb::parallel_for<int>(0, files.size(), 1, [&] (int i ) {
+  for (unsigned int i = 0; i < files.size(); ++i) {
     auto& img = images[i];
     img.open(files[i]);
-    //mutex.lock();
     img.show(columns, rows);
-    //mutex.unlock();
 
     Image small = scale(img, img.width_ * 0.5, img.height_ * 0.5);
     Image gray = grayscale(small);
@@ -409,13 +412,10 @@ int main(int argc, const char* argv[]) {
     write_to(tone3, out, 0, img.height_ * 0.5);
     write_to(gray, out, img.width_ * 0.5, img.height_ * 0.5);
 
-    std::osyncstream cout(std::cout);
-    cout << '\n';
-    //mutex.lock();
+    std::cout << '\n';
     out.show(columns, rows);
-    //mutex.unlock();
     out.write(fmt::format("out{:02d}.jpg", i));
-  });
+  }
   auto finish = std::chrono::steady_clock::now();
   float ms = std::chrono::duration_cast<std::chrono::duration<float>>(finish - start).count() * 1000.f;
   if (true) {
