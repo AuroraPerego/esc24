@@ -15,7 +15,7 @@ struct ScaleKernel {
                                 const int heightIn, const int channels,
                                 const float scale) const {
     if (scale == 1) {
-      // if the dimensions are the same, return a copy of the image
+      // if the dimensions are the same, nothing to be done
       *out = *in;
       return;
     }
@@ -154,45 +154,3 @@ void WriteTo(TQueue &queue, T &in, T &out, const int x, const int y,
     alpaka::memcpy(queue, std::move(subViewOut), subViewIn, Vec1D{x_width * c});
   }
 }
-
-// struct WriteToKernel
-//{
-//     template<typename TAcc, typename T>
-//	ALPAKA_FN_ACC void operator()(
-//         TAcc const& acc,
-//         const int x,
-//         const int y) const
-//	{
-//          // the whole source image would fall outside of the target image
-//          along the X axis if ((x + in->width_ < 0) or (x >= out->width_)) {
-//            return;
-//          }
-//
-//          // the whole source image would fall outside of the target image
-//          along the Y axis if ((y + in->height_ < 0) or (y >= out->height_)) {
-//            return;
-//          }
-//
-//          // find the valid range for the overlapping part of the images along
-//          the X and Y axes int src_x_from = alpaka::math::max(acc, 0, -x); int
-//          src_x_to = alpaka::math::min(acc, in->width_, out->width_ - x); int
-//          dst_x_from = alpaka::math::max(acc, 0, x);
-//          //int dst_x_to   = alpaka::math::min(acc, in->width_ + x,
-//          out->width_); int x_width = src_x_to - src_x_from;
-//
-//          int src_y_from = alpaka::math::max(acc, 0, -y);
-//          int src_y_to = alpaka::math::min(acc, in->height_, out->height_ -
-//          y); int dst_y_from = alpaka::math::max(acc, 0, y);
-//          //int dst_y_to   = std::min(in->height_ + y, out->height_);
-//          int y_height = src_y_to - src_y_from;
-//
-//          for(auto y : alpaka::uniformElements(acc, out->height_)) {
-//            int src_p = ((src_y_from + y) * in->width_ + src_x_from) *
-//            in->channels_; int dst_p = ((dst_y_from + y) * out->width_ +
-//            dst_x_from) * out->channels_;
-//		   out->data_[dst_p] = in->data_[src_p];
-//		   //auto dest = out->data_ + dst_p;
-//		   //dest = in->data_ + src_p; // FIXME
-//          }
-//	}
-// };

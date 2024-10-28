@@ -169,8 +169,6 @@ int main(int argc, const char *argv[]) {
   auto queue = Queue{device};
 
   auto start = std::chrono::steady_clock::now();
-  // std::vector<Image> images;
-  // images.resize(files.size());
   for (unsigned int i = 0; i < files.size(); ++i) {
     Image img;
     img.open(files[i]);
