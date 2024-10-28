@@ -192,18 +192,18 @@ int main(int argc, const char *argv[]) {
 
     // device allocations
     auto in_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{size});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{size});
     auto out_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{size});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{size});
 
     auto out1_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
     auto out2_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
     auto out3_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
     auto out4_d =
-        alpaka::allocAsyncBuf<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
+        alpaka::allocAsyncBufIfSupported<unsigned char, uint32_t>(queue, Vec1D{sizeSmall});
 
     // copy to device
     alpaka::memcpy(queue, in_d, in_h);
@@ -243,7 +243,7 @@ int main(int argc, const char *argv[]) {
       std::chrono::duration_cast<std::chrono::duration<float>>(finish - start)
           .count() *
       1000.f;
-  if (true) {
+  if (verbose) {
     std::cerr << fmt::format("total:      {:6.2f}", ms) << " ms\n";
   }
 

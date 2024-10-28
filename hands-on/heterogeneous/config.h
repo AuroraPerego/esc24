@@ -70,6 +70,22 @@ using Queue = alpaka::Queue<Device, alpaka::NonBlocking>;
 template <typename TDim>
 using Acc = alpaka::AccGpuHipRt<TDim, uint32_t>;
 
+#elif defined(ALPAKA_ACC_SYCL_ENABLED) && defined(ALPAKA_SYCL_ONEAPI_CPU)
+// CPU SYCL backend
+using Device = alpaka::DevCpuSycl;
+using Queue = alpaka::Queue<Device, alpaka::NonBlocking>;
+
+template <typename TDim>
+using Acc = alpaka::AccCpuSycl<TDim, uint32_t>;
+
+#elif defined(ALPAKA_ACC_SYCL_ENABLED) && defined(ALPAKA_SYCL_ONEAPI_GPU)
+// Intel GPU SYCL backend
+using Device = alpaka::DevGpuSyclIntel;
+using Queue = alpaka::Queue<Device, alpaka::NonBlocking>;
+
+template <typename TDim>
+using Acc = alpaka::AccGpuSyclIntel<TDim, uint32_t>;
+
 #elif defined(ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED)
 // CPU serial backend
 using Device = alpaka::DevCpu;
@@ -96,7 +112,7 @@ using Acc = alpaka::AccCpuTbbBlocks<TDim, uint32_t>;
 
 #else
 // no backend specified
-#error Please define a single one of ALPAKA_ACC_GPU_CUDA_ENABLED, ALPAKA_ACC_GPU_HIP_ENABLED, ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED, ALPAKA_ACC_CPU_B_SEQ_T_THREADS_ENABLED, ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
+#error Please define a single one of ALPAKA_ACC_GPU_CUDA_ENABLED, ALPAKA_ACC_GPU_HIP_ENABLED, ALPAKA_SYCL_ONEAPI_CPU, ALPAKA_SYCL_ONEAPI_GPU, ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED, ALPAKA_ACC_CPU_B_SEQ_T_THREADS_ENABLED, ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
 
 #endif
 
