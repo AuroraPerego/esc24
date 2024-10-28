@@ -5,10 +5,10 @@ NVCC := nvcc
 HIPCC := hipcc
 ICPX := icpx
 
-all: test testTBB testCuda testHip testCpuSycl testIntelGpu
+all: test testTBB testOMP testCuda testHip testCpuSycl testIntelGpu
 
 clean:
-	rm -f test testTBB testCuda testHip testCpuSycl testIntelGpu
+	rm -f test testTBB testOMP testCuda testHip testCpuSycl testIntelGpu
 
 alpaka:
 	git clone https://github.com/alpaka-group/alpaka.git --single-branch --branch develop
@@ -40,6 +40,9 @@ test: test.cc kernel.h Makefile stb fmt alpaka boost
 
 testTBB: test.cc kernel.h Makefile stb fmt alpaka boost
 	$(CXX) $(CXXFLAGS) $(EXTERNAL) -isystem $(TBB) -ltbb $< -o $@ -DALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED -DALPAKA_DISABLE_VENDOR_RNG
+
+testOMP: test.cc kernel.h Makefile stb fmt alpaka boost
+	$(CXX) $(CXXFLAGS) $(EXTERNAL) -fopenmp $< -o $@ -DALPAKA_ACC_CPU_B_OMP2_T_SEQ_ENABLED -DALPAKA_DISABLE_VENDOR_RNG
 
 testCuda: test.cc kernel.h Makefile stb fmt alpaka boost
 	$(NVCC) $(NVCCFLAGS) $(EXTERNAL) --expt-relaxed-constexpr -diag-suppress 20208 -x cu $< -o $@ -DALPAKA_ACC_GPU_CUDA_ENABLED -DALPAKA_DISABLE_VENDOR_RNG
