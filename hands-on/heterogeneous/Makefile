@@ -51,7 +51,7 @@ testHip: test.cc kernel.h Makefile stb fmt alpaka boost
 	$(HIPCC) $(CXXFLAGS) $(EXTERNAL)  $< -o $@ -DALPAKA_ACC_GPU_HIP_ENABLED -DALPAKA_DISABLE_VENDOR_RNG -frelaxed-template-template-args
 
 testCpuSycl: test.cc kernel.h Makefile stb fmt alpaka boost
-	$(ICPX) $(CXXFLAGS) $(EXTERNAL) -fsycl -fsycl-targets=spir64_x86_64 $< -o $@ -DALPAKA_ACC_SYCL_ENABLED -DALPAKA_SYCL_ONEAPI_CPU -DALPAKA_DISABLE_VENDOR_RNG
+	$(ICPX) $(CXXFLAGS) $(EXTERNAL) -fsycl -fsycl-targets=spir64_x86_64 $< -o $@ -DALPAKA_ACC_SYCL_ENABLED -DALPAKA_SYCL_ONEAPI_CPU -DALPAKA_DISABLE_VENDOR_RNG -DALPAKA_BLOCK_SHARED_DYN_MEMBER_ALLOC_KIB=0
 
 testIntelGpu: test.cc kernel.h Makefile stb fmt alpaka boost
 	$(ICPX) $(CXXFLAGS) $(EXTERNAL) -fsycl -fsycl-targets=intel_gpu_pvc $< -o $@ -DALPAKA_ACC_SYCL_ENABLED -DALPAKA_SYCL_ONEAPI_GPU -DALPAKA_DISABLE_VENDOR_RNG
