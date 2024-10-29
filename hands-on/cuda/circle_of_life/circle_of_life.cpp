@@ -12,6 +12,8 @@
 #include <chrono>
 
 #include "gif.h"
+#include "config.h"
+#include "WorkDiv.h"
 
 // Compile-time variable to control saving grids
 constexpr bool SAVE_GRIDS = false; // Set to true to enable GIF output
@@ -60,26 +62,29 @@ struct Cell {
 
 using Grid = std::vector<std::vector<Cell>>;
 
-Grid initialize_grid(size_t width, size_t height, int weight_empty,
+template<typename TGrid>
+void initialize_grid(TGrid grid, int weight_empty,
                      int weight_predator, int weight_prey, std::mt19937 &gen) {
-  Grid grid(height, std::vector<Cell>(width));
-
   // Fix for narrowing conversion warnings
   std::vector<double> weights = {static_cast<double>(weight_empty),
                                  static_cast<double>(weight_predator),
                                  static_cast<double>(weight_prey)};
   std::discrete_distribution<> dist(weights.begin(), weights.end());
 
-  for (auto &row : grid)
-    for (auto &cell : row) {
+  auto const bufWidth = alpaka::getWidth(grid);
+  ALPAKA_ASSERT(bufWidth >= 1);
+  auto const bufHeight = alpaka::getHeight(grid);
+  ALPAKA_ASSERT(bufHeight >= 1);
+  for (auto row = 0u; row < bufHeight; ++row) {
+    for (auto col = 0u; col < bufWidth; ++col) {
+      auto& cell = grid.at(Vec2D{row, col});
       cell.state = static_cast<CellState>(dist(gen));
       if (cell.state == CellState::Predator || cell.state == CellState::Prey)
         cell.level = 50; // Initialize level to 50 for colored cells
       else
         cell.level = 0; // Empty cells have level 0
     }
-
-  return grid;
+  }
 }
 
 struct NeighborData {
@@ -92,10 +97,9 @@ struct NeighborData {
   int empty_neighbors = 0;
 };
 
-NeighborData gather_neighbor_data(const Grid &grid, int x, int y) {
+template<typename TAcc, typename TGrid>
+NeighborData gather_neighbor_data(TAcc const &acc, const TGrid &grid, int x, int y, const size_t height, const size_t width) {
   NeighborData data;
-  int height = grid.size();
-  int width = grid[0].size();
 
   for (int dy = -1; dy <= 1; ++dy)
     for (int dx = -1; dx <= 1; ++dx) {
@@ -103,15 +107,15 @@ NeighborData gather_neighbor_data(const Grid &grid, int x, int y) {
         continue;
       int nx = (x + dx + width) % width;
       int ny = (y + dy + height) % height;
-      const Cell &neighbor = grid[ny][nx];
+      const Cell &neighbor = grid[ny * width + nx];
       if (neighbor.state == CellState::Predator) {
         data.predator_levels.push_back(neighbor.level);
         data.max_predator_level =
-            std::max(data.max_predator_level, neighbor.level);
+            alpaka::math::max(acc, data.max_predator_level, neighbor.level);
         data.sum_predator_levels += neighbor.level;
       } else if (neighbor.state == CellState::Prey) {
         data.prey_levels.push_back(neighbor.level);
-        data.max_prey_level = std::max(data.max_prey_level, neighbor.level);
+        data.max_prey_level = alpaka::math::max(acc, data.max_prey_level, neighbor.level);
         data.sum_prey_levels += neighbor.level;
       } else if (neighbor.state == CellState::Empty) {
         data.empty_neighbors++;
@@ -120,16 +124,18 @@ NeighborData gather_neighbor_data(const Grid &grid, int x, int y) {
   return data;
 }
 
-void update_grid_sequential(const Grid &current_grid, Grid &new_grid) {
-  size_t height = current_grid.size();
-  size_t width = current_grid[0].size();
+struct updateGridKernel
+{
+  template <typename TAcc, typename TGrid>
+  ALPAKA_FN_ACC void operator()(TAcc const &acc, TGrid const *__restrict__ current_grid, TGrid*__restrict__ new_grid, const size_t height, const size_t width) const {
+    for (auto ndindex :
+         alpaka::uniformElementsND(acc, Vec2D{width, height})) {
+      auto y = ndindex[1];
+      auto x = ndindex[0];
+      const Cell &current_cell = current_grid[y * width + x];
+      Cell &new_cell = new_grid[y * width + x];
 
-  for (size_t y = 0; y < height; ++y) {
-    for (size_t x = 0; x < width; ++x) {
-      const Cell &current_cell = current_grid[y][x];
-      Cell &new_cell = new_grid[y][x];
-
-      NeighborData neighbors = gather_neighbor_data(current_grid, x, y);
+      NeighborData neighbors = gather_neighbor_data(acc, current_grid, x, y, height, width);
 
       if (current_cell.state == CellState::Empty) {
         // Empty cell becomes Prey if more than two Preys surround it
@@ -169,7 +175,7 @@ void update_grid_sequential(const Grid &current_grid, Grid &new_grid) {
             current_cell.level < neighbors.sum_predator_levels) {
           new_cell.state = CellState::Predator;
           uint8_t max_level =
-              std::max(neighbors.max_predator_level, neighbors.max_prey_level);
+              alpaka::math::max(acc, neighbors.max_predator_level, neighbors.max_prey_level);
           new_cell.level = (max_level < 255) ? max_level + 1 : 255;
           action_taken = true;
         }
@@ -224,18 +230,22 @@ void update_grid_sequential(const Grid &current_grid, Grid &new_grid) {
       }
     }
   }
-}
+};
 
-void save_frame_as_gif(const Grid &grid, GifWriter &writer) {
+template<typename TGridDev, typename TGridHost>
+void save_frame_as_gif(Queue queue, const TGridDev &grid, TGridHost& gridHost, GifWriter &writer) {
   if constexpr (SAVE_GRIDS) {
-    int width = grid[0].size();
-    int height = grid.size();
+    alpaka::memcpy(queue, gridHost, grid);
+    alpaka::wait(queue);
+
+    auto const width = alpaka::getWidth(gridHost);
+    auto const height = alpaka::getHeight(gridHost);
     std::vector<uint8_t> image(4 * width * height, 255); // RGBA image
 
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
+    for (unsigned int y = 0; y < height; ++y) {
+      for (unsigned int x = 0; x < width; ++x) {
         size_t idx = 4 * (y * width + x);
-        const Cell &cell = grid[y][x];
+        const auto& cell = grid.at(Vec2D{y, x});
         if (cell.state == CellState::Predator) {
           image[idx] = 0;              // R
           image[idx + 1] = 0;          // G
@@ -277,10 +287,14 @@ void print_grid(const Grid &grid) {
   }
 }
 
-void save_grid_to_file(const Grid &grid, const std::string &filename) {
+template<typename TGrid>
+void save_grid_to_file(const TGrid &grid, const std::string &filename) {
   std::ofstream ofs(filename);
-  for (const auto &row : grid) {
-    for (const auto &cell : row) {
+  auto const bufWidth = alpaka::getWidth(grid);
+  auto const bufHeight = alpaka::getHeight(grid);
+  for (auto row = 0u; row < bufHeight; ++row) {
+    for (auto col = 0u; col < bufWidth; ++col) {
+      auto& cell = grid.at(Vec2D{row, col});
       ofs << static_cast<int>(cell.state) << ' ' << static_cast<int>(cell.level)
           << ' ';
     }
@@ -311,14 +325,15 @@ bool load_grid_from_file(Grid &grid, const std::string &filename) {
   return true;
 }
 
-bool compare_grids(const Grid &grid1, const Grid &grid2) {
-  size_t height = grid1.size();
-  size_t width = grid1[0].size();
+template<typename TGrid>
+bool compare_grids(const TGrid& grid1, const Grid &grid2) {
+  size_t height = grid2.size();
+  size_t width = grid2[0].size();
   for (size_t y = 0; y < height; ++y)
     for (size_t x = 0; x < width; ++x) {
-      if (grid1[y][x].state != grid2[y][x].state)
+      if (grid1.at(Vec2D{y,x}).state != grid2[y][x].state)
         return false;
-      if (grid1[y][x].level != grid2[y][x].level)
+      if (grid1.at(Vec2D{y,x}).level != grid2[y][x].level)
         return false;
     }
   return true;
@@ -394,6 +409,18 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // alpaka init
+  auto const platformHost = alpaka::PlatformCpu{}; // or HostPlatform
+  auto const devHost = alpaka::getDevByIdx(platformHost, 0);
+
+  auto const platformAcc = Platform{};
+  auto const devAcc = alpaka::getDevByIdx(platformAcc, 0);
+
+  Queue queue(devAcc);
+
+  alpaka::Vec<Dim2D, Idx> const extent(static_cast<Idx>(height), static_cast<Idx>(width));
+  auto gridHost = alpaka::allocMappedBufIfSupported<Cell, Idx>(devHost, platformAcc, extent);
+
   // Initialize random number generator
   if (!seed_provided) {
     seed = std::random_device{}();
@@ -401,9 +428,7 @@ int main(int argc, char *argv[]) {
   std::mt19937 gen(seed);
 
   const size_t NUM_ITERATIONS = 500; // Total number of iterations
-  Grid grid = initialize_grid(width, height, weight_empty, weight_predator,
-                              weight_prey, gen);
-  Grid new_grid = grid;
+  initialize_grid(gridHost, weight_empty, weight_predator, weight_prey, gen);
 
   // Generate reference filename
   std::string reference_filename =
@@ -422,29 +447,41 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // grid on device
+  auto grid = alpaka::allocAsyncBufIfSupported<Cell, Idx>(queue, extent);
+  auto newGrid = alpaka::allocAsyncBufIfSupported<Cell, Idx>(queue, extent);
+  alpaka::memcpy(queue, grid, gridHost);
+  alpaka::memcpy(queue, newGrid, grid);
+
   // Simulation loop
   auto start = std::chrono::high_resolution_clock::now();
+  auto const &workDiv = makeWorkDiv<Acc2D>(
+      Vec2D{(width + 32 - 1) / 32., (height + 32 - 1) / 32.}, Vec2D{32, 32});
   for (size_t i = 0; i < NUM_ITERATIONS; ++i) {
-    update_grid_sequential(grid, new_grid);
-    save_frame_as_gif(grid, writer);
-    std::swap(grid, new_grid);
+    alpaka::exec<Acc2D>(queue, workDiv, updateGridKernel{}, grid.data(), newGrid.data(), height, width);
+    save_frame_as_gif(queue, newGrid, gridHost, writer);
+    alpaka::memcpy(queue, grid, newGrid);
   }
+  alpaka::wait(queue);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::cout << "Elapsed time of sequential version: " << elapsed_seconds.count() << "s\n";
+  std::cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
 
   if constexpr (SAVE_GRIDS) {
     GifEnd(&writer);
     std::cout << "Simulation saved as 'simulation.gif'.\n";
   }
 
+  // copy to host for comparison
+  alpaka::memcpy(queue, gridHost, newGrid);
+  alpaka::wait(queue);
   if (!verify_filename.empty()) {
     // Load the reference grid and compare after simulation
     Grid reference_grid(height, std::vector<Cell>(width));
     if (!load_grid_from_file(reference_grid, verify_filename)) {
       return 1;
     }
-    if (compare_grids(grid, reference_grid)) {
+    if (compare_grids(gridHost, reference_grid)) {
       std::cout << "Verification successful: The grids match.\n";
     } else {
       std::cerr << "Verification failed: The grids do not match.\n";
@@ -452,7 +489,7 @@ int main(int argc, char *argv[]) {
     }
   } else {
     // Save the final grid to a reference file
-    save_grid_to_file(grid, reference_filename);
+    save_grid_to_file(gridHost, reference_filename);
     std::cout << "Reference grid saved to " << reference_filename << '\n';
   }
 
