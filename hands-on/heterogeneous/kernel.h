@@ -2,10 +2,10 @@
 #include <iostream>
 
 namespace math {
-template <typename T>
-ALPAKA_FN_ACC T clamp(T const &value, T const &low, T const &high) {
-  return (value < low) ? low : (high < value) ? high : value;
-}
+  template <typename T>
+  ALPAKA_FN_ACC T clamp(T const &value, T const &low, T const &high) {
+    return (value < low) ? low : (high < value) ? high : value;
+  }
 } // namespace math
 
 struct ScaleKernel {
